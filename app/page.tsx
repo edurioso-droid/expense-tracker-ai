@@ -1,101 +1,188 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useMemo } from 'react';
+import { Expense, ExpenseFormData } from './types/expense';
+import { useExpenses, useFilters } from './lib/hooks';
+import { filterExpenses, exportToCSV } from './lib/utils';
+import ExpenseForm from './components/ExpenseForm';
+import ExpenseList from './components/ExpenseList';
+import ExpenseFilters from './components/ExpenseFilters';
+import SummaryCards from './components/SummaryCards';
+import CategoryChart from './components/CategoryChart';
+import MonthlyTrend from './components/MonthlyTrend';
+import EditModal from './components/EditModal';
+
+type Tab = 'dashboard' | 'expenses';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const { expenses, loaded, addExpense, updateExpense, deleteExpense } = useExpenses();
+  const { filters, setFilter, resetFilters } = useFilters();
+  const [editExpense, setEditExpense] = useState<Expense | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [addSuccess, setAddSuccess] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const filtered = useMemo(
+    () => filterExpenses(expenses, filters.startDate, filters.endDate, filters.category, filters.search),
+    [expenses, filters]
+  );
+
+  function handleAdd(data: ExpenseFormData) {
+    addExpense(data);
+    setAddSuccess(true);
+    setTimeout(() => setAddSuccess(false), 2000);
+  }
+
+  function handleUpdate(id: string, data: ExpenseFormData) {
+    updateExpense(id, data);
+  }
+
+  if (!loaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center text-gray-400">
+          <div className="text-5xl mb-3 animate-pulse">💸</div>
+          <p className="text-sm">Loading...</p>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">💸</span>
+            <span className="font-bold text-gray-900 text-lg">ExpenseTracker</span>
+          </div>
+          <nav className="flex gap-1">
+            {(['dashboard', 'expenses'] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
+                  activeTab === tab
+                    ? 'bg-indigo-50 text-indigo-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </nav>
+          <button
+            onClick={() => exportToCSV(filtered)}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Export filtered expenses to CSV"
+          >
+            <span>⬇️</span>
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Summary cards always visible */}
+        <SummaryCards allExpenses={expenses} filteredExpenses={filtered} />
+
+        {activeTab === 'dashboard' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Add Expense */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <span>➕</span> Add Expense
+                </h2>
+                {addSuccess && (
+                  <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
+                    ✓ Expense added successfully
+                  </div>
+                )}
+                <ExpenseForm onSubmit={handleAdd} />
+              </div>
+            </div>
+
+            {/* Charts */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <span>🍩</span> Spending by Category
+                </h2>
+                <CategoryChart expenses={filtered} />
+              </div>
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <span>📅</span> Monthly Trend (last 6 months)
+                </h2>
+                <MonthlyTrend expenses={expenses} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'expenses' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Filters + List */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <span>🔎</span> Filter Expenses
+                </h2>
+                <ExpenseFilters
+                  filters={filters}
+                  onFilterChange={setFilter}
+                  onReset={resetFilters}
+                  resultCount={filtered.length}
+                />
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <span>🧾</span> Expenses
+                  </h2>
+                  {filtered.length > 0 && (
+                    <button
+                      onClick={() => exportToCSV(filtered)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      Export CSV
+                    </button>
+                  )}
+                </div>
+                <ExpenseList
+                  expenses={filtered}
+                  onEdit={setEditExpense}
+                  onDelete={deleteExpense}
+                />
+              </div>
+            </div>
+
+            {/* Add form sidebar */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 sticky top-24">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <span>➕</span> Add Expense
+                </h2>
+                {addSuccess && (
+                  <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
+                    ✓ Expense added successfully
+                  </div>
+                )}
+                <ExpenseForm onSubmit={handleAdd} />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      <EditModal
+        expense={editExpense}
+        onSave={handleUpdate}
+        onClose={() => setEditExpense(null)}
+      />
     </div>
   );
 }
