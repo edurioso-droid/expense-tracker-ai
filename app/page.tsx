@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Expense, ExpenseFormData } from './types/expense';
 import { useExpenses, useFilters } from './lib/hooks';
-import { filterExpenses, exportToCSV } from './lib/utils';
+import { filterExpenses } from './lib/utils';
 import ExpenseForm from './components/ExpenseForm';
 import ExpenseList from './components/ExpenseList';
 import ExpenseFilters from './components/ExpenseFilters';
@@ -11,6 +11,7 @@ import SummaryCards from './components/SummaryCards';
 import CategoryChart from './components/CategoryChart';
 import MonthlyTrend from './components/MonthlyTrend';
 import EditModal from './components/EditModal';
+import ExportModal from './components/ExportModal';
 
 type Tab = 'dashboard' | 'expenses';
 
@@ -20,6 +21,7 @@ export default function Home() {
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [addSuccess, setAddSuccess] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const filtered = useMemo(
     () => filterExpenses(expenses, filters.startDate, filters.endDate, filters.category, filters.search),
@@ -72,13 +74,12 @@ export default function Home() {
             ))}
           </nav>
           <button
-            onClick={() => exportToCSV(filtered)}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Export filtered expenses to CSV"
+            onClick={() => setShowExport(true)}
+            disabled={expenses.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span>⬇️</span>
-            <span className="hidden sm:inline">Export CSV</span>
+            <span className="hidden sm:inline">Export Data</span>
           </button>
         </div>
       </header>
@@ -143,14 +144,6 @@ export default function Home() {
                   <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span>🧾</span> Expenses
                   </h2>
-                  {filtered.length > 0 && (
-                    <button
-                      onClick={() => exportToCSV(filtered)}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                    >
-                      Export CSV
-                    </button>
-                  )}
                 </div>
                 <ExpenseList
                   expenses={filtered}
@@ -183,6 +176,10 @@ export default function Home() {
         onSave={handleUpdate}
         onClose={() => setEditExpense(null)}
       />
+
+      {showExport && (
+        <ExportModal expenses={expenses} onClose={() => setShowExport(false)} />
+      )}
     </div>
   );
 }
