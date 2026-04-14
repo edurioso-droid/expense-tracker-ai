@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.gray[600],
+    borderBottomColor: COLORS.gray[500],
   },
   text: {
     fontFamily: TYPOGRAPHY.display,
@@ -151,6 +151,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingBottom: 4,
   },
   time: {
     fontFamily: TYPOGRAPHY.mono,

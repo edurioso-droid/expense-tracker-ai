@@ -78,13 +78,14 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: COLORS.gray[600],
+    borderColor: '#444444',
     borderRadius: RADIUS.md,
     paddingVertical: 5,
     paddingHorizontal: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   chipSelected: {
     borderColor: COLORS.red,
@@ -96,18 +97,18 @@ const styles = StyleSheet.create({
   chipName: {
     fontFamily: TYPOGRAPHY.mono,
     fontSize: FONT_SIZE.xs,
-    color: COLORS.gray[200],
+    color: COLORS.gray[100],
     letterSpacing: 0.4,
   },
   chipNameSelected: {
     color: COLORS.red,
   },
   chipNameLocked: {
-    color: COLORS.gray[400],
+    color: COLORS.gray[300],
   },
   chipPrice: {
     fontFamily: TYPOGRAPHY.mono,
     fontSize: FONT_SIZE.xs - 1,
-    color: COLORS.gray[400],
+    color: COLORS.gray[200],
   },
 });

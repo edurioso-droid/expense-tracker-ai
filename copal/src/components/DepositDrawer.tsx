@@ -22,6 +22,7 @@ import { useDepositStore, createDeposit } from '../store/depositStore';
 import { SkinId } from '../types/deposit';
 
 const MAX_CHARS = 280;
+const HIDDEN_BOTTOM = -800;
 
 interface Props {
   visible: boolean;
@@ -35,28 +36,60 @@ export function DepositDrawer({ visible, onClose }: Props) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const slideY = useRef(new Animated.Value(800)).current;
+  // drawerBottom: de HIDDEN_BOTTOM (-800) a 0 cuando visible
+  // keyboardHeight: 0 cuando cerrado, altura del teclado cuando abierto
+  // El container usa Animated.add(drawerBottom, keyboardHeight) como `bottom`
+  // Asi el drawer sube exactamente con el teclado, sin calculos extra
+  const drawerBottom = useRef(new Animated.Value(HIDDEN_BOTTOM)).current;
+  const keyboardHeight = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
 
-  const { addToFeed, setDepositing } = useDepositStore();
+  const { addToFeed } = useDepositStore();
 
-  // Slide in/out
+  // Escuchar eventos del teclado y animar keyboardHeight
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      Animated.timing(keyboardHeight, {
+        toValue: e.endCoordinates.height,
+        duration: Platform.OS === 'ios' ? (e.duration || 250) : 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, (e) => {
+      Animated.timing(keyboardHeight, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? (e.duration || 250) : 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Slide in/out del drawer
   useEffect(() => {
     if (visible) {
-      Animated.spring(slideY, {
+      Animated.spring(drawerBottom, {
         toValue: 0,
         tension: 65,
         friction: 11,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(() => {
         inputRef.current?.focus();
       });
     } else {
       Keyboard.dismiss();
-      Animated.timing(slideY, {
-        toValue: 800,
+      Animated.timing(drawerBottom, {
+        toValue: HIDDEN_BOTTOM,
         duration: 280,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(() => {
         setText('');
         setMood('idle');
@@ -67,17 +100,12 @@ export function DepositDrawer({ visible, onClose }: Props) {
 
   // Mood reactivo al texto
   useEffect(() => {
-    if (text.length > 0) {
-      setMood('listening');
-    } else {
-      setMood('idle');
-    }
+    setMood(text.length > 0 ? 'listening' : 'idle');
   }, [text]);
 
   const handleDeposit = useCallback(async () => {
     if (!text.trim() || isAnimating) return;
 
-    // Rate limit check
     if (!canDeposit()) {
       const wait = Math.ceil(timeUntilNextSlot() / 1000 / 60);
       setMood('alert');
@@ -94,31 +122,22 @@ export function DepositDrawer({ visible, onClose }: Props) {
     const session = await getOrCreateSession();
     const deposit = createDeposit(text.trim(), session.sessionId, selectedSkin);
 
-    // Optimistic: agregar al feed inmediatamente con status pending
     addToFeed(deposit);
     recordDeposit();
     await incrementDepositCount();
-
-    // Haptic de confirmacion
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Moderar de forma asincrona — no bloquea la UX
     moderateDeposit(text.trim()).then((result) => {
       const { updateStatus } = useDepositStore.getState();
       if (result.status === 'ok') {
         updateStatus(deposit.id, 'ok');
-      } else if (result.status === 'rejected') {
-        updateStatus(deposit.id, 'rejected');
-        // El pensamiento se retira del feed silenciosamente
       } else {
-        updateStatus(deposit.id, 'review');
-        // Oculto del feed publico hasta revision humana
+        updateStatus(deposit.id, result.status === 'rejected' ? 'rejected' : 'review');
       }
     });
 
     setMood('accepting');
 
-    // Mostrar animacion del skin seleccionado (2.2 - 3.4s)
     setTimeout(() => {
       setIsAnimating(false);
       setMood('idle');
@@ -132,30 +151,32 @@ export function DepositDrawer({ visible, onClose }: Props) {
 
   if (!visible && !isAnimating) return null;
 
+  // bottom = drawerBottom + keyboardHeight
+  // Cuando teclado sube 300px: bottom pasa de 0 → 300, el drawer sube con el
+  const animatedBottom = Animated.add(drawerBottom, keyboardHeight);
+
   return (
-    <Animated.View
-      style={[styles.container, { transform: [{ translateY: slideY }] }]}
-    >
-      {/* Header */}
+    <Animated.View style={[styles.container, { bottom: animatedBottom }]}>
+      {/* Header — siempre visible, fuera del area afectada por teclado */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
           <Text style={styles.closeText}>×</Text>
         </TouchableOpacity>
         <AIEntity mood={mood} size="sm" />
         <View style={styles.charCount}>
-          <Text
-            style={[
-              styles.charText,
-              isOverLimit && { color: COLORS.red },
-            ]}
-          >
+          <Text style={[styles.charText, isOverLimit && { color: COLORS.red }]}>
             {charsLeft}
           </Text>
         </View>
       </View>
 
       {/* Input area */}
-      <View style={styles.inputContainer}>
+      <ScrollView
+        style={styles.inputScroll}
+        contentContainerStyle={styles.inputScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {isAnimating && mood === 'accepting' ? (
           <SkinAnimation skinId={selectedSkin} text={text} />
         ) : (
@@ -165,7 +186,7 @@ export function DepositDrawer({ visible, onClose }: Props) {
             value={text}
             onChangeText={setText}
             placeholder="deposita lo que sea real"
-            placeholderTextColor={COLORS.gray[500]}
+            placeholderTextColor={COLORS.gray[400]}
             multiline
             maxLength={MAX_CHARS + 20}
             autoCorrect={false}
@@ -175,19 +196,16 @@ export function DepositDrawer({ visible, onClose }: Props) {
             selectionColor={COLORS.red}
           />
         )}
-      </View>
+      </ScrollView>
 
-      {/* Error message */}
       {errorMsg && (
         <View style={styles.errorRow}>
           <Text style={styles.errorText}>{errorMsg}</Text>
         </View>
       )}
 
-      {/* Skin selector */}
       <SkinSelector selected={selectedSkin} onSelect={setSelectedSkin} />
 
-      {/* Boton depositar */}
       <TouchableOpacity
         style={[
           styles.depositBtn,
@@ -208,16 +226,14 @@ export function DepositDrawer({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: COLORS.black,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray[600],
+    borderTopColor: COLORS.gray[500],
     paddingBottom: Platform.OS === 'ios' ? 34 : 16,
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
@@ -235,7 +251,7 @@ const styles = StyleSheet.create({
   closeText: {
     fontFamily: TYPOGRAPHY.mono,
     fontSize: 22,
-    color: COLORS.gray[300],
+    color: COLORS.gray[200],
     lineHeight: 24,
   },
   charCount: {
@@ -245,12 +261,15 @@ const styles = StyleSheet.create({
   charText: {
     fontFamily: TYPOGRAPHY.mono,
     fontSize: FONT_SIZE.xs,
-    color: COLORS.gray[400],
+    color: COLORS.gray[300],
   },
-  inputContainer: {
-    minHeight: 100,
-    maxHeight: 200,
+  inputScroll: {
+    minHeight: 90,
+    maxHeight: 180,
     marginBottom: SPACING.sm,
+  },
+  inputScrollContent: {
+    flexGrow: 1,
   },
   input: {
     fontFamily: TYPOGRAPHY.display,
@@ -267,7 +286,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: TYPOGRAPHY.mono,
     fontSize: FONT_SIZE.xs,
-    color: COLORS.gray[300],
+    color: COLORS.gray[200],
   },
   depositBtn: {
     backgroundColor: COLORS.red,
@@ -277,7 +296,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   depositBtnDisabled: {
-    backgroundColor: COLORS.gray[600],
+    backgroundColor: COLORS.gray[500],
   },
   depositBtnText: {
     fontFamily: TYPOGRAPHY.mono,
